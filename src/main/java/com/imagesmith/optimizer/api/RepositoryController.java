@@ -13,10 +13,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.server.ResponseStatusException;
 import java.util.UUID;
 
 @RestController
+@CrossOrigin(origins = "http://localhost:3000")
 @RequestMapping("/api/v1/repositories")
 public class RepositoryController {
     private final RepositoryStore repositories;
@@ -35,11 +37,12 @@ public class RepositoryController {
     }
 
     @PostMapping("/{repositoryId}/inspect")
-    public InspectionResponse inspect(@PathVariable UUID repositoryId) {
+    public InspectionResponse inspect(@PathVariable UUID repositoryId,
+                                      @Valid @RequestBody InspectRequest request) {
         RepositoryEntity repository = repositories.findById(repositoryId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Repository not found"));
-        var inspection = inspectionService.inspect(repository);
-        return new InspectionResponse(repository.getId(), inspection.foundDockerfile(), inspection.dockerfiles());
+        var inspection = inspectionService.inspect(repository, request.sessionName());
+        return new InspectionResponse(repository.getId(), inspection);
     }
 
     @ExceptionHandler(RepositoryInspectionService.RepositoryInspectionException.class)
@@ -49,8 +52,8 @@ public class RepositoryController {
     }
 
     public record CreateRepositoryRequest(@NotBlank String name, @NotBlank String url) {}
+    public record InspectRequest(@NotBlank String sessionName) {}
     public record RepositoryResponse(UUID repositoryId, String name, String url) {}
-    public record InspectionResponse(UUID repositoryId, boolean foundDockerfile,
-                                     java.util.List<RepositoryInspectionService.DockerfileReport> dockerfiles) {}
+    public record InspectionResponse(UUID repositoryId, RepositoryInspectionService.Inspection inspection) {}
     public record ErrorResponse(String error) {}
 }

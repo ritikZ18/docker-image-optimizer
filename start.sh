@@ -10,21 +10,25 @@ FRONTEND_LOG="$RUN_DIR/frontend.log"
 
 start_backend=true
 start_frontend=true
+restart_services=false
 
-case "${1:-}" in
-    --backend-only)
-        start_frontend=false
-        ;;
-    --frontend-only)
-        start_backend=false
-        ;;
-    "")
-        ;;
-    *)
-        echo "Usage: $0 [--backend-only|--frontend-only]" >&2
-        exit 2
-        ;;
-esac
+for argument in "$@"; do
+    case "$argument" in
+        --backend-only)
+            start_frontend=false
+            ;;
+        --frontend-only)
+            start_backend=false
+            ;;
+        --restart)
+            restart_services=true
+            ;;
+        *)
+            echo "Usage: $0 [--restart] [--backend-only|--frontend-only]" >&2
+            exit 2
+            ;;
+    esac
+done
 
 require_command() {
     if ! command -v "$1" >/dev/null 2>&1; then
@@ -34,6 +38,7 @@ require_command() {
 }
 
 require_command docker
+require_command curl
 
 if [[ "$start_backend" == true ]]; then
     require_command mvn
@@ -57,34 +62,83 @@ fi
 
 mkdir -p "$RUN_DIR"
 
-echo "Starting PostgreSQL..."
-(cd "$ROOT_DIR" && docker compose up -d postgres)
+stop_port() {
+    local port="$1"
+    if command -v fuser >/dev/null 2>&1; then
+        fuser -k "$port/tcp" >/dev/null 2>&1 || true
+    fi
+}
+
+if [[ "$restart_services" == true ]]; then
+    echo "RESTART: stopping existing application services..."
+    stop_port 8080
+    stop_port 3000
+    (cd "$ROOT_DIR" && docker compose restart postgres >/dev/null)
+fi
+
+echo "SPINNING UP: PostgreSQL..."
+(cd "$ROOT_DIR" && docker compose up -d --wait postgres)
 
 pids=()
 cleanup() {
     if ((${#pids[@]} > 0)); then
         echo
-        echo "Stopping application processes..."
-        kill "${pids[@]}" 2>/dev/null || true
+        echo "STOPPING: application processes..."
+        for pid in "${pids[@]}"; do
+            kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+        done
         wait "${pids[@]}" 2>/dev/null || true
     fi
 }
 trap cleanup EXIT INT TERM
 
 if [[ "$start_backend" == true ]]; then
-    echo "Starting Spring Boot API on http://localhost:8080"
-    (cd "$ROOT_DIR" && mvn spring-boot:run >"$BACKEND_LOG" 2>&1) &
+    echo "SPINNING UP: Spring Boot API..."
+    (cd "$ROOT_DIR" && exec setsid mvn spring-boot:run >"$BACKEND_LOG" 2>&1) &
     pids+=("$!")
 fi
 
 if [[ "$start_frontend" == true ]]; then
-    echo "Starting Next.js frontend on http://localhost:3000"
-    (cd "$FRONTEND_DIR" && npm run dev >"$FRONTEND_LOG" 2>&1) &
+    echo "SPINNING UP: Next.js frontend..."
+    (cd "$FRONTEND_DIR" && exec setsid npm run dev >"$FRONTEND_LOG" 2>&1) &
     pids+=("$!")
 fi
 
-echo ""
-echo "ImageSmith is running. Press Ctrl+C to stop application processes."
+wait_for_http() {
+    local name="$1"
+    local url="$2"
+    local pid="$3"
+    local attempts=0
+    while ((attempts < 60)); do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            echo "FAILED: $name stopped during startup. Check its log." >&2
+            return 1
+        fi
+        if curl --silent --show-error --output /dev/null "$url"; then
+            echo "READY: $name at $url"
+            return 0
+        fi
+        attempts=$((attempts + 1))
+        sleep 1
+    done
+    echo "FAILED: $name did not become ready within 60 seconds." >&2
+    return 1
+}
+
+if [[ "$start_backend" == true ]]; then
+    backend_pid="${pids[0]}"
+    wait_for_http "Spring Boot API" "http://localhost:8080/api/v1/repositories" "$backend_pid"
+fi
+
+if [[ "$start_frontend" == true ]]; then
+    frontend_index=0
+    if [[ "$start_backend" == true ]]; then
+        frontend_index=1
+    fi
+    wait_for_http "Next.js frontend" "http://localhost:3000" "${pids[$frontend_index]}"
+fi
+
+echo "READY: ImageSmith is running. Press Ctrl+C to stop all application services."
 echo "Backend log:  $BACKEND_LOG"
 echo "Frontend log: $FRONTEND_LOG"
 

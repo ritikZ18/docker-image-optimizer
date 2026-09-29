@@ -18,12 +18,13 @@ class RepositoryInspectionServiceTest {
             runGit(repository, "-c", "user.email=test@example.com", "-c", "user.name=Test", "commit", "-m", "fixture");
 
             var service = new RepositoryInspectionService();
-            var inspection = service.inspect(new RepositoryEntity("test", repository.toUri().toString()));
+            var inspection = service.inspect(new RepositoryEntity("test", repository.toUri().toString()), "fixture-session");
 
             assertThat(inspection.foundDockerfile()).isTrue();
             assertThat(inspection.dockerfiles()).singleElement().satisfies(report -> {
                 assertThat(report.path()).isEqualTo("Dockerfile");
                 assertThat(report.instructions()).containsExactly("FROM", "COPY", "ENTRYPOINT");
+                assertThat(report.baseImages()).containsExactly("eclipse-temurin:21");
             });
         } finally {
             try (var paths = Files.walk(repository)) {

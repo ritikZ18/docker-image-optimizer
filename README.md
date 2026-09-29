@@ -16,6 +16,22 @@ Evidence-driven Docker image optimization platform.
 docker compose up -d postgres
 ```
 
+## Start the application
+
+Start PostgreSQL, the API, and the frontend with readiness checks:
+
+```bash
+./start.sh
+```
+
+Restart existing API and frontend processes before starting:
+
+```bash
+./start.sh --restart
+```
+
+Stop the application processes with `Ctrl+C`. Logs are written to `.run/`.
+
 ## Run the API
 
 ```bash
@@ -37,7 +53,9 @@ curl -X POST http://localhost:8080/api/v1/repositories \\
 Inspect its Dockerfiles:
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/repositories/REPOSITORY_ID/inspect
+curl -X POST http://localhost:8080/api/v1/repositories/REPOSITORY_ID/inspect \
+  -H 'Content-Type: application/json' \
+  -d '{"sessionName":"baseline review"}'
 ```
 
 Create an asynchronous optimization run with the returned `repositoryId`:
