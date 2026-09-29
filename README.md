@@ -26,12 +26,18 @@ The API listens on `http://localhost:8080`.
 
 ## API vertical slice
 
-Create a repository:
+Register an existing public repository:
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/repositories \\
   -H 'Content-Type: application/json' \\
   -d '{"name":"example","url":"https://github.com/example/example"}'
+```
+
+Inspect its Dockerfiles:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/repositories/REPOSITORY_ID/inspect
 ```
 
 Create an asynchronous optimization run with the returned `repositoryId`:
