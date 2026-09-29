@@ -1,0 +1,13 @@
+spring:
+  application:
+    name: docker-image-optimizer
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/imagesmith}
+    username: ${DATABASE_USERNAME:imagesmith}
+    password: ${DATABASE_PASSWORD:imagesmith}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+server:
+  port: ${SERVER_PORT:8080}
