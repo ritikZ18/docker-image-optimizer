@@ -16,6 +16,8 @@ export default function Home() {
   const [url, setUrl] = useState('');
   const [message, setMessage] = useState('');
   const [inspection, setInspection] = useState<Inspection | null>(null);
+  const [repositoryId, setRepositoryId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function connectRepository(event: FormEvent<HTMLFormElement>) {
@@ -34,6 +36,7 @@ export default function Home() {
       if (!repositoryResponse.ok) throw new Error('Repository registration failed.');
 
       const repository = await repositoryResponse.json() as { repositoryId: string };
+      setRepositoryId(repository.repositoryId);
       const inspectionResponse = await fetch(`${api}/api/v1/repositories/${repository.repositoryId}/inspect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -43,6 +46,8 @@ export default function Home() {
       if (!inspectionResponse.ok) throw new Error('error' in result ? result.error : 'Inspection failed.');
 
       setInspection((result as { inspection: Inspection }).inspection);
+      const sessionsResponse = await fetch(`${api}/api/v1/repositories/${repository.repositoryId}/sessions`);
+      if (sessionsResponse.ok) setSessions(await sessionsResponse.json() as SessionSummary[]);
       setMessage('Inspection complete.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Something went wrong.');
@@ -92,6 +97,12 @@ export default function Home() {
           </div>
         </section>
       )}
+      {repositoryId && sessions.length > 0 && (
+        <section className="session-history" aria-label="Saved inspection sessions">
+          <div><span className="block-label">Saved sessions</span><p>Evidence snapshots stored in PostgreSQL</p></div>
+          <div className="session-list">{sessions.map((session) => <article key={session.sessionId}><strong>{session.sessionName}</strong><span>{session.fileCount} files · {session.lineCount.toLocaleString()} lines</span><small>{new Date(session.createdAt).toLocaleString()}</small></article>)}</div>
+        </section>
+      )}
       <section className="signal-grid" aria-label="System signals">
         {signals.map((signal) => <article className="signal" key={signal.label}><span>{signal.label}</span><strong>{signal.value}</strong><small>{signal.detail}</small></article>)}
       </section>
@@ -111,6 +122,7 @@ type Inspection = {
 };
 
 type TreeNode = { name: string; type: string; children: TreeNode[] };
+type SessionSummary = { sessionId: string; sessionName: string; createdAt: string; fileCount: number; lineCount: number; dockerfileCount: number };
 
 function Tree({ node, depth }: { node: TreeNode; depth: number }) {
   return <details className="tree-node" open={depth === 0}><summary><span className={node.type}>{node.name}</span>{node.children.length > 0 && <small>{node.children.length} items</small>}</summary>{node.children.length > 0 && <div className="tree-children">{node.children.map((child) => <Tree key={`${node.name}/${child.name}`} node={child} depth={depth + 1} />)}</div>}</details>;

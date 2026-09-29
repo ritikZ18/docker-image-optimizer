@@ -70,6 +70,26 @@ Load a saved evidence payload:
 curl http://localhost:8080/api/v1/repositories/sessions/SESSION_ID
 ```
 
+Add an annotation to a saved session:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/inspection-sessions/SESSION_ID/annotations \
+  -H 'Content-Type: application/json' \
+  -d '{"category":"CONTAINERS","severity":"HIGH","filePath":"Dockerfile","lineNumber":1,"title":"No pinned base image","detail":"Base image should use an immutable digest.","evidenceJson":"{\"source\":\"dockerfile\",\"reference\":\"Dockerfile:1\"}"}'
+```
+
+List annotations:
+
+```bash
+curl http://localhost:8080/api/v1/inspection-sessions/SESSION_ID/annotations
+```
+
+Preview the compact grounded context prepared for the reasoning model:
+
+```bash
+curl http://localhost:8080/api/v1/inspection-sessions/SESSION_ID/planning-context
+```
+
 Create an asynchronous optimization run with the returned `repositoryId`:
 
 ```bash
