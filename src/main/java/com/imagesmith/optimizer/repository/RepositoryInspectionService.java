@@ -78,9 +78,10 @@ public class RepositoryInspectionService {
                 repository.getUrl(),
                 summary,
                 categories(files, reports, checkout),
+                languages(files),
                 reports,
                 dockerAssets(files, reports, checkout),
-                buildTree(checkout, files));
+                buildTree(checkout, files, repository.getName()));
     }
 
     private boolean isIgnored(Path path, Path checkout) {
@@ -128,8 +129,12 @@ public class RepositoryInspectionService {
         for (Path file : files) {
             String name = file.getFileName().toString();
             String relative = checkout.relativize(file).toString().replace('\\', '/');
-            if (name.equals("package.json") || name.equals("next.config.js") || name.equals("next.config.ts")) {
-                add(detected, "Frontend", name.equals("package.json") ? "Node.js" : "Next.js");
+            if (name.equals("package.json")) {
+                add(detected, "Frontend", "package.json");
+                addPackageSignals(detected, file);
+            }
+            if (name.equals("next.config.js") || name.equals("next.config.ts")) {
+                add(detected, "Frontend", "Next.js");
             }
             if (name.equals("pom.xml") || name.equals("build.gradle") || name.equals("build.gradle.kts")) {
                 add(detected, "Backend", name.equals("pom.xml") ? "Java / Maven" : "Java / Gradle");
@@ -139,24 +144,78 @@ public class RepositoryInspectionService {
             }
             if (name.equals("go.mod")) add(detected, "Backend", "Go");
             if (name.equals("Cargo.toml")) add(detected, "Backend", "Rust");
+            if (name.equals("Cargo.toml")) add(detected, "Frameworks", "Cargo");
+            if (name.equals("package.json")) add(detected, "Frameworks", "JavaScript package ecosystem");
             if (name.equals("terraform.tf") || name.endsWith(".tf")) add(detected, "Infrastructure", "Terraform");
             if (name.equals("docker-compose.yml") || name.equals("docker-compose.yaml")) add(detected, "Infrastructure", "Docker Compose");
+            if (relative.startsWith(".github/workflows/")) add(detected, "CI/CD", "GitHub Actions");
+            if (name.equals("Jenkinsfile")) add(detected, "CI/CD", "Jenkins");
+            if (name.equals(".gitignore") || name.equals(".gitattributes")) add(detected, "Versioning", "Git");
+            if (name.equals("pytest.ini") || name.equals("jest.config.js") || name.equals("vitest.config.ts") || name.equals("Cargo.toml")) add(detected, "Testing", name.equals("Cargo.toml") ? "Rust test tooling" : name);
+            if (name.equals("docker-compose.yml") || name.equals("docker-compose.yaml") || name.equals("application.yml") || name.equals("application.properties")) add(detected, "Services", name);
+            if (relative.startsWith("services/") || relative.startsWith("service/")) add(detected, "Services", "Service modules");
+            if (name.equals("README.md") || name.equals("Readme.md") || name.equals("ARCHITECTURE.md")) add(detected, "Architecture", "Repository documentation");
+            if (name.endsWith(".test.ts") || name.endsWith(".spec.ts") || name.endsWith("_test.go") || name.endsWith("_test.rs")) add(detected, "Evaluation", "Automated test files");
             if (relative.startsWith("frontend/") || relative.startsWith("web/")) add(detected, "Frontend", "Web application");
             if (relative.startsWith("services/") || relative.startsWith("server/") || relative.startsWith("backend/")) add(detected, "Backend", "Service layer");
         }
-        if (!dockerfiles.isEmpty()) add(detected, "Containers", "Dockerfile");
-        return detected.entrySet().stream().map(entry -> new CategoryReport(entry.getKey(), List.copyOf(entry.getValue()))).toList();
+        List<String> categoryNames = List.of("Frontend", "Backend", "Frameworks", "Database", "CI/CD", "Versioning", "Containers", "Evaluation", "Testing", "Services", "Architecture");
+        return categoryNames.stream()
+            .map(name -> new CategoryReport(name, detected.containsKey(name) ? "DETECTED" : "NOT_DETECTED",
+                detected.containsKey(name) ? List.copyOf(detected.get(name)) : List.of("No matching evidence found")))
+            .toList();
     }
 
     private void add(Map<String, Set<String>> detected, String category, String detail) {
         detected.computeIfAbsent(category, ignored -> new LinkedHashSet<>()).add(detail);
     }
 
+    private void addPackageSignals(Map<String, Set<String>> detected, Path packageFile) {
+        try {
+            String packageJson = Files.readString(packageFile);
+            for (String dependency : List.of("next", "react", "vue", "angular", "express", "fastify", "typescript", "vite")) {
+                if (packageJson.matches("(?s).*\\\"" + Pattern.quote(dependency) + "\\\"\\s*:.*")) {
+                    add(detected, "Frontend", dependency);
+                }
+            }
+            for (String dependency : List.of("jest", "vitest", "playwright", "cypress")) {
+                if (packageJson.matches("(?s).*\\\"" + Pattern.quote(dependency) + "\\\"\\s*:.*")) {
+                    add(detected, "Testing", dependency);
+                }
+            }
+        } catch (IOException ignored) {
+        }
+    }
+
+    private List<LanguageReport> languages(List<Path> files) {
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        Map<String, String> extensions = Map.ofEntries(
+                Map.entry(".ts", "TypeScript"), Map.entry(".tsx", "TypeScript"),
+                Map.entry(".js", "JavaScript"), Map.entry(".jsx", "JavaScript"),
+                Map.entry(".rs", "Rust"), Map.entry(".java", "Java"),
+                Map.entry(".py", "Python"), Map.entry(".go", "Go"),
+                Map.entry(".css", "CSS"), Map.entry(".html", "HTML"),
+                Map.entry(".toml", "TOML"), Map.entry(".yml", "YAML"), Map.entry(".yaml", "YAML"));
+        for (Path file : files) {
+            String fileName = file.getFileName().toString();
+            int dot = fileName.lastIndexOf('.');
+            if (dot > 0) {
+                String language = extensions.get(fileName.substring(dot));
+                if (language != null) counts.merge(language, 1, Integer::sum);
+            }
+        }
+        int total = counts.values().stream().mapToInt(Integer::intValue).sum();
+        return counts.entrySet().stream()
+                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                .map(entry -> new LanguageReport(entry.getKey(), entry.getValue(), total == 0 ? 0 : Math.round(entry.getValue() * 1000f / total) / 10f))
+                .toList();
+    }
+
     private List<String> dockerAssets(List<Path> files, List<DockerfileReport> dockerfiles, Path checkout) {
         Set<String> assets = new LinkedHashSet<>();
         for (Path file : files) {
             String name = file.getFileName().toString();
-            if (DOCKERFILE_NAME.matcher(name).matches() || name.equals(".dockerignore") || name.startsWith("docker-compose")) {
+            if (DOCKERFILE_NAME.matcher(name).matches() || name.equals(".dockerignore") || name.equals("docker-compose.yml") || name.equals("docker-compose.yaml")) {
                 assets.add(checkout.relativize(file).toString().replace('\\', '/'));
             }
         }
@@ -164,8 +223,8 @@ public class RepositoryInspectionService {
         return List.copyOf(assets);
     }
 
-    private TreeNode buildTree(Path checkout, List<Path> files) {
-        TreeBuilder root = new TreeBuilder(checkout.getFileName().toString(), "directory");
+    private TreeNode buildTree(Path checkout, List<Path> files, String repositoryName) {
+        TreeBuilder root = new TreeBuilder(repositoryName, "directory");
         int[] count = {1};
         for (Path file : files) {
             Path relative = checkout.relativize(file);
@@ -231,7 +290,7 @@ public class RepositoryInspectionService {
     }
 
     public record Inspection(String sessionName, String repositoryName, String repositoryUrl,
-                              RepositorySummary summary, List<CategoryReport> categories,
+                              RepositorySummary summary, List<CategoryReport> categories, List<LanguageReport> languages,
                               List<DockerfileReport> dockerfiles, List<String> dockerAssets, TreeNode tree) {
         public boolean foundDockerfile() {
             return !dockerfiles.isEmpty();
@@ -239,7 +298,8 @@ public class RepositoryInspectionService {
     }
 
     public record RepositorySummary(int fileCount, long lineCount, int directoryCount) {}
-    public record CategoryReport(String name, List<String> details) {}
+    public record CategoryReport(String name, String status, List<String> details) {}
+    public record LanguageReport(String name, int fileCount, float percentage) {}
     public record DockerfileReport(String path, int lineCount, List<String> instructions, List<String> baseImages) {}
     public record TreeNode(String name, String type, List<TreeNode> children) {}
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
+import AnalysisSurface from './components/AnalysisSurface';
 
 const signals = [
   { label: 'Baseline builds', value: '0', detail: 'Awaiting first repository' },
@@ -82,11 +83,12 @@ export default function Home() {
       </section>
       {inspection && (
         <section className="inspection" aria-live="polite">
-          <div className="inspection-heading"><p className="eyebrow">{inspection.sessionName} / repository evidence</p><h2>{inspection.summary.fileCount} files mapped</h2><p className="inspection-meta">{inspection.summary.lineCount.toLocaleString()} lines · {inspection.summary.directoryCount} directories</p></div>
+          <div className="inspection-heading"><p className="eyebrow">{inspection.sessionName} / repository evidence</p><h2>{inspection.summary.fileCount} files mapped</h2><p className="inspection-meta">{inspection.summary.lineCount.toLocaleString()} lines · {inspection.summary.directoryCount} directories</p><div className="surface-label">Analysis surface <span>quantitative signal</span></div><AnalysisSurface fileCount={inspection.summary.fileCount} lineCount={inspection.summary.lineCount} language={inspection.languages[0]?.name ?? ''} /></div>
+          <div className="metric-strip"><div><small>LOC</small><strong>{inspection.summary.lineCount.toLocaleString()}</strong></div><div><small>FILES</small><strong>{inspection.summary.fileCount}</strong></div><div><small>DIRECTORIES</small><strong>{inspection.summary.directoryCount}</strong></div><div><small>DOCKERFILES</small><strong className={inspection.dockerfiles.length === 0 ? 'metric-alert' : ''}>{inspection.dockerfiles.length}</strong></div></div>
           <div className="analysis-grid">
-            <div className="analysis-block"><span className="block-label">Technology map</span><div className="category-list">{inspection.categories.map((category) => <article className="category" key={category.name}><strong>{category.name}</strong><div>{category.details.map((detail) => <span key={detail}>{detail}</span>)}</div></article>)}</div></div>
-            <div className="analysis-block"><span className="block-label">Container surface</span><div className="dockerfile-list">{inspection.dockerAssets.map((asset) => <article className="dockerfile" key={asset}><strong>{asset}</strong></article>)}</div></div>
-            <div className="analysis-block tree-block"><span className="block-label">Repository constellation</span><Tree node={inspection.tree} /></div>
+            <div className="analysis-block technology-block"><span className="block-label">Technology map</span><div className="language-bars">{inspection.languages.map((language) => <div className="language-row" key={language.name}><span>{language.name}</span><div><i style={{ width: `${Math.max(language.percentage, 2)}%` }} /></div><small>{language.percentage}%</small></div>)}</div><div className="category-list">{inspection.categories.map((category) => <article className={`category ${category.status === 'NOT_DETECTED' ? 'category-muted' : ''}`} key={category.name}><div className="category-heading"><strong>{category.name}</strong><span className={`category-status ${category.status === 'DETECTED' ? 'status-detected' : 'status-missing'}`}>{category.status === 'DETECTED' ? 'FOUND' : 'MISSING'}</span></div><div>{category.details.map((detail) => <span key={detail}>{detail}</span>)}</div></article>)}</div></div>
+            <div className="analysis-block"><span className="block-label">Container surface</span>{inspection.dockerfiles.length === 0 ? <article className="docker-warning"><strong>NO DOCKERFILE</strong><p>Container build evidence is missing from this repository.</p></article> : <div className="dockerfile-list">{inspection.dockerAssets.map((asset) => <article className="dockerfile" key={asset}><strong>{asset}</strong></article>)}</div>}</div>
+            <div className="analysis-block tree-block"><span className="block-label">Repository constellation</span><p className="tree-hint">Select a branch to inspect its files.</p><Tree node={inspection.tree} depth={0} /></div>
           </div>
         </section>
       )}
@@ -101,7 +103,8 @@ export default function Home() {
 type Inspection = {
   sessionName: string;
   summary: { fileCount: number; lineCount: number; directoryCount: number };
-  categories: Array<{ name: string; details: string[] }>;
+  categories: Array<{ name: string; status: string; details: string[] }>;
+  languages: Array<{ name: string; fileCount: number; percentage: number }>;
   dockerAssets: string[];
   dockerfiles: Array<{ path: string; lineCount: number; instructions: string[] }>;
   tree: TreeNode;
@@ -109,6 +112,6 @@ type Inspection = {
 
 type TreeNode = { name: string; type: string; children: TreeNode[] };
 
-function Tree({ node }: { node: TreeNode }) {
-  return <details className="tree-node" open={node.type === 'directory'}><summary><span className={node.type}>{node.name}</span>{node.children.length > 0 && <small>{node.children.length}</small>}</summary>{node.children.length > 0 && <div className="tree-children">{node.children.map((child) => <Tree key={`${node.name}/${child.name}`} node={child} />)}</div>}</details>;
+function Tree({ node, depth }: { node: TreeNode; depth: number }) {
+  return <details className="tree-node" open={depth === 0}><summary><span className={node.type}>{node.name}</span>{node.children.length > 0 && <small>{node.children.length} items</small>}</summary>{node.children.length > 0 && <div className="tree-children">{node.children.map((child) => <Tree key={`${node.name}/${child.name}`} node={child} depth={depth + 1} />)}</div>}</details>;
 }

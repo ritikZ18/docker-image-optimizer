@@ -58,6 +58,18 @@ curl -X POST http://localhost:8080/api/v1/repositories/REPOSITORY_ID/inspect \
   -d '{"sessionName":"baseline review"}'
 ```
 
+List saved inspection sessions:
+
+```bash
+curl http://localhost:8080/api/v1/repositories/REPOSITORY_ID/sessions
+```
+
+Load a saved evidence payload:
+
+```bash
+curl http://localhost:8080/api/v1/repositories/sessions/SESSION_ID
+```
+
 Create an asynchronous optimization run with the returned `repositoryId`:
 
 ```bash
