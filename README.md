@@ -16,6 +16,22 @@ Evidence-driven Docker image optimization platform.
 docker compose up -d postgres
 ```
 
+## Start the application
+
+Start PostgreSQL, the API, and the frontend with readiness checks:
+
+```bash
+./start.sh
+```
+
+Restart existing API and frontend processes before starting:
+
+```bash
+./start.sh --restart
+```
+
+Stop the application processes with `Ctrl+C`. Logs are written to `.run/`.
+
 ## Run the API
 
 ```bash
@@ -26,12 +42,52 @@ The API listens on `http://localhost:8080`.
 
 ## API vertical slice
 
-Create a repository:
+Register an existing public repository:
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/repositories \\
   -H 'Content-Type: application/json' \\
   -d '{"name":"example","url":"https://github.com/example/example"}'
+```
+
+Inspect its Dockerfiles:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/repositories/REPOSITORY_ID/inspect \
+  -H 'Content-Type: application/json' \
+  -d '{"sessionName":"baseline review"}'
+```
+
+List saved inspection sessions:
+
+```bash
+curl http://localhost:8080/api/v1/repositories/REPOSITORY_ID/sessions
+```
+
+Load a saved evidence payload:
+
+```bash
+curl http://localhost:8080/api/v1/repositories/sessions/SESSION_ID
+```
+
+Add an annotation to a saved session:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/inspection-sessions/SESSION_ID/annotations \
+  -H 'Content-Type: application/json' \
+  -d '{"category":"CONTAINERS","severity":"HIGH","filePath":"Dockerfile","lineNumber":1,"title":"No pinned base image","detail":"Base image should use an immutable digest.","evidenceJson":"{\"source\":\"dockerfile\",\"reference\":\"Dockerfile:1\"}"}'
+```
+
+List annotations:
+
+```bash
+curl http://localhost:8080/api/v1/inspection-sessions/SESSION_ID/annotations
+```
+
+Preview the compact grounded context prepared for the reasoning model:
+
+```bash
+curl http://localhost:8080/api/v1/inspection-sessions/SESSION_ID/planning-context
 ```
 
 Create an asynchronous optimization run with the returned `repositoryId`:

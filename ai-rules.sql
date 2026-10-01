@@ -1,0 +1,2 @@
+-- Reference rules for the V1 knowledge base. Runtime seeding is handled by Spring.
+-- Keep source URLs and documentation versions reviewable when rules change.
