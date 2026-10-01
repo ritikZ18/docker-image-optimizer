@@ -24,10 +24,16 @@ Start PostgreSQL, the API, and the frontend with readiness checks:
 ./start.sh
 ```
 
-Restart existing API and frontend processes before starting:
+Restart existing API and frontend processes before starting. PostgreSQL data is preserved:
 
 ```bash
 ./start.sh --restart
+```
+
+Reset the database only when explicitly required:
+
+```bash
+./start.sh --reset-db
 ```
 
 Stop the application processes with `Ctrl+C`. Logs are written to `.run/`.
@@ -88,6 +94,13 @@ Preview the compact grounded context prepared for the reasoning model:
 
 ```bash
 curl http://localhost:8080/api/v1/inspection-sessions/SESSION_ID/planning-context
+```
+
+Run deterministic source analysis and a policy-checked dry-run plan:
+
+```bash
+curl http://localhost:8080/api/v1/inspection-sessions/SESSION_ID/findings
+curl -X POST http://localhost:8080/api/v1/inspection-sessions/SESSION_ID/plan
 ```
 
 Create an asynchronous optimization run with the returned `repositoryId`:

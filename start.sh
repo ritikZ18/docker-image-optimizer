@@ -11,6 +11,7 @@ FRONTEND_LOG="$RUN_DIR/frontend.log"
 start_backend=true
 start_frontend=true
 restart_services=false
+reset_database=false
 
 for argument in "$@"; do
     case "$argument" in
@@ -23,8 +24,11 @@ for argument in "$@"; do
         --restart)
             restart_services=true
             ;;
+        --reset-db)
+            reset_database=true
+            ;;
         *)
-            echo "Usage: $0 [--restart] [--backend-only|--frontend-only]" >&2
+            echo "Usage: $0 [--restart] [--reset-db] [--backend-only|--frontend-only]" >&2
             exit 2
             ;;
     esac
@@ -69,11 +73,16 @@ stop_port() {
     fi
 }
 
+if [[ "$reset_database" == true ]]; then
+    echo "RESET: removing PostgreSQL data volume..."
+    (cd "$ROOT_DIR" && docker compose down -v)
+fi
+
 if [[ "$restart_services" == true ]]; then
     echo "RESTART: stopping existing application services..."
     stop_port 8080
     stop_port 3000
-    (cd "$ROOT_DIR" && docker compose restart postgres >/dev/null)
+    echo "RESTART: PostgreSQL data is preserved."
 fi
 
 echo "SPINNING UP: PostgreSQL..."
@@ -109,19 +118,24 @@ wait_for_http() {
     local url="$2"
     local pid="$3"
     local attempts=0
+    local spinner_index=0
+    local spinner='|/-\\'
     while ((attempts < 60)); do
         if ! kill -0 "$pid" 2>/dev/null; then
-            echo "FAILED: $name stopped during startup. Check its log." >&2
+            printf '\r%-72s\n' "FAILED: $name stopped during startup. Check its log."
             return 1
         fi
-        if curl --silent --show-error --output /dev/null "$url"; then
-            echo "READY: $name at $url"
+        http_status="$(curl --silent --output /dev/null --write-out '%{http_code}' --connect-timeout 1 --max-time 2 "$url" 2>/dev/null || true)"
+        if [[ "$http_status" != "000" ]]; then
+            printf '\r%-72s\n' "READY: $name at $url"
             return 0
         fi
+        printf '\rSPINNING UP: %-24s [%s] waiting for readiness' "$name" "${spinner:spinner_index:1}"
+        spinner_index=$(( (spinner_index + 1) % 4 ))
         attempts=$((attempts + 1))
         sleep 1
     done
-    echo "FAILED: $name did not become ready within 60 seconds." >&2
+    printf '\r%-72s\n' "FAILED: $name did not become ready within 60 seconds."
     return 1
 }
 
